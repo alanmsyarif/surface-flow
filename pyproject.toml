@@ -1,0 +1,9 @@
+[project]
+name = "surface-flow"
+version = "0.0.1"
+description = "Procedural surface drainage R&D for Blender Geometry Nodes"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
