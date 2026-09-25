@@ -1,115 +1,46 @@
-# Surface Flow
+# Flumen
 
-Experimental procedural surface drainage for **Blender 5.2 LTS Geometry Nodes**.
+Experimental **Blender 5.2 LTS Geometry Nodes** surface flow and drips, version 0.0.2.
 
-> Mesh in → coating source → surface-following paths out.
+Two workflows are available: static drainage paths, and animated particles with surface resistance, adhesion, detachment, collision, and native baking. The animated workflow is a procedural approximation inspired by *A Practical Guide to Thin Film and Drips Simulation* (SIGGRAPH 2019). It does not implement the paper's FLIP/APIC solver or liquid films.
 
-This repository implements the first feasibility slice of the Surface Flow project. It is **not a fluid solver**. The current MVP generates deterministic flow paths that start near the highest part of a mesh relative to gravity, move along tangent gravity, re-project to the closest surface, and rebuild the recorded point history as curves.
+## Try the baked demo
 
-## What is implemented in v0.0.1
+Open [Flumen_M1_Demo.blend](artifacts/Flumen_M1_Demo.blend). Play or scrub frames **1-72**. Choose Sphere, Slope, Bottle rim, Opposing sheets, Concave fold, or Suzanne from Blender's scene selector. Bakes are packed into the file; the generated nodes work without installing the add-on. The cyan drops are an opaque diagnostic display, not a water shader.
 
-- automatic source region derived from mesh height along gravity
-- seed distribution on the source region
-- tangent-gravity flow direction
-- stable random directional perturbation
-- Repeat Zone iterative propagation
-- Geometry Proximity surface re-attachment
-- per-path `sf_id`, `sf_age`, and `sf_normal` attributes
-- Points to Curves reconstruction
-- preview tube geometry + material
-- a small sidebar panel that builds/rebuilds the node group
-- Blender background smoke-test script
-- pure-Python reference math tests
+![M1 sphere and detached drops](artifacts/Flumen_M1_Preview.png)
 
-## Not implemented yet
+## Install and create your own
 
-- channel attraction / convergence
-- explicit path merging
-- flow-weight accumulation
-- continuous wetness field
-- film/sheet geometry
-- support estimation and detachment
-- age-based animation reveal
-- moving/deforming surfaces
+1. In Blender 5.2, use Preferences > Get Extensions > Install from Disk, selecting [flumen-0.0.2.zip](artifacts/flumen-0.0.2.zip).
+2. Select a stationary mesh. Set Scene Unit Scale to **1.0** (one Blender unit = one meter). The mesh needs height variation along Gravity; tilt a horizontal plane before setup.
+3. Open 3D View > Sidebar > Flumen. Choose **Create Animated Flow**, or **Build Flumen** for static paths.
+4. For animation, keep the new water host unparented with identity transforms. Tune inputs in its Geometry Nodes modifier and play sequentially from the start frame.
+5. Save the file, then use the host's native **Simulation Nodes bake** controls. Choose Packed for a portable file. Bake before jumping between frames or rendering out of order.
 
-Those are intentionally deferred until path propagation is reliable.
+After changing collision geometry, source, gravity, resistance, time range/FPS, or other simulation controls: delete **this host's** bake/cache, return to the start frame, and replay/rebake. Material changes are downstream of stored state and do not require recomputing particle motion. Each host has independent state.
 
-## Install for development
+Development installation remains available through `scripts/install_dev.py` in Blender's Text Editor.
 
-1. Open Blender 5.2 LTS.
-2. Open the **Scripting** workspace.
-3. Open `scripts/install_dev.py` from this repository and run it.
-4. Select a mesh.
-5. Open **3D View → Sidebar → Surface Flow**.
-6. Click **Build Surface Flow**.
-7. Tune values in the Geometry Nodes modifier.
+## Scope and limits
 
-## Install as a Blender extension
+- Static paths retain the original workflow. Rebuild preserves socket IDs, modifier values, drivers, and external links, and rolls back on candidate failure.
+- Animated M1 seeds once, caps the budget at 2,048 particles, and uses 8-64 adaptive substeps by default. Seed density is conservatively capped using total surface area; a narrow source can seed fewer particles than its budget. Particle age is seconds; static trail age is an iteration index.
+- Collision meshes must remain stationary throughout the simulation. Animated transforms, deformation, and changing topology are unsupported. Do not move the water host.
+- Attached drops use tangent gravity with linear drag. Free drops use ballistic integration with a radius-extended ray and proximity clearance. This is approximate collision, particularly around sharp edges and grazing contacts.
+- Travel clamps prevent large jumps when the substep cap is insufficient; `sf_step_limited` reports the resulting loss of accuracy. `Diagnostics` exposes volume totals, particle counts, blocked/limited counts, and actual substeps.
+- No merging, continuous emission, persistent animated trails, wetness, films, or moving-surface transport in M1. These remain gated future work.
+- Performance depends heavily on geometry and adaptive substeps. See measured results in [Implementation status](docs/IMPLEMENTATION_STATUS.md); the 100 ms preview target is not a guarantee.
 
-An installable package can be built from `extension/` with:
-
-```bash
-blender --command extension build --source-dir extension
-```
-
-Or use the prebuilt `surface_flow-0.0.1.zip` included with the generated project package.
-
-## First test settings
-
-For a unit sphere of radius 1 m:
+## Build and verify
 
 ```text
-Gravity          (0, 0, -1)
-Source Start      0.72
-Source Softness   0.08
-Seed Density      35
-Steps             48
-Step Length       0.025
-Randomness        0.10
-Flow Radius       0.006
-Surface Offset    0.002
+python -m pytest -q
+blender --background --factory-startup --python-exit-code 1 --python scripts/run_blender_tests.py
+python scripts/build_extension.py artifacts/extension-stage
+blender --background --factory-startup --command extension validate artifacts/extension-stage
+blender --background --factory-startup --python-exit-code 1 --python scripts/smoke_test_blender.py -- --package artifacts/extension-stage
+blender --background --factory-startup --command extension build --source-dir artifacts/extension-stage --output-dir artifacts
 ```
 
-Start with `Randomness = 0` when debugging propagation.
-
-## MVP algorithm
-
-```text
-INPUT MESH
-   ↓
-height along -gravity
-   ↓
-automatic source mask
-   ↓
-distribute seed points
-   ↓
-Repeat Zone
-   ├─ sample nearest surface normal
-   ├─ project gravity to tangent plane
-   ├─ add deterministic tangent noise
-   ├─ advance one step
-   ├─ project to nearest surface
-   └─ append tip to trail history
-   ↓
-Points to Curves (group = sf_id, weight = sf_age)
-   ↓
-preview tubes
-```
-
-Tangent gravity is:
-
-```text
-G_t = normalize(G - dot(G, N) * N)
-```
-
-## Reference scope
-
-The visual inspiration is Stomakhin, Moffat, and Boyle, *A Practical Guide to Thin Film and Drips Simulation* (SIGGRAPH 2019). Their production method uses FLIP/APIC, surface tension, viscosity, contact-angle handling, and moving-boundary treatment. Surface Flow deliberately does **not** reproduce that solver; it explores a much lighter procedural approximation for attached coating/drainage patterns.
-
-## Current technical risk
-
-The node graph is generated through Blender's Python API and targets Blender 5.2. The repository includes `scripts/inspect_node_api.py` because socket names can change between Blender versions. Run the smoke test before treating a build as release-ready.
-
-## License
-
-MIT.
+Use a new staging directory each time. `flumen/` is canonical; `flumen/` is its distribution mirror. See [Testing](docs/TESTING.md), [Algorithm](docs/ALGORITHM.md), and the [implementation plan](docs/superpowers/plans/2026-09-24-geometry-nodes-drips.md).

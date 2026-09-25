@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.2 - M0-M1
+
+- Fix static socket wiring, source thresholds, downhill motion, and smoke validation.
+- Preserve static interfaces, values, links, and drivers across transactional rebuilds.
+- Add stationary-surface animated particles, analytic resistance, detachment, approximate collision, and volume accounting.
+- Add separate water hosts, native packed baking, runtime tests, benchmark reports, and six validation scenes.
+- Generate the extension from canonical sources. Merging, films, wetness, and moving surfaces remain deferred.
+
 ## 0.0.1
 
 - initial repository implementation

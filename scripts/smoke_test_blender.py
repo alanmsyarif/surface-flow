@@ -1,41 +1,71 @@
-"""Run with Blender 5.2+:
-
-blender --background --factory-startup --python scripts/smoke_test_blender.py
-"""
-import os
+"""Blender background smoke check; add -- --save PATH to keep the scene."""
+import argparse
+import importlib.util
+from pathlib import Path
 import sys
-
 import bpy
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
-from surface_flow.build_nodes import build_surface_flow_group
-from surface_flow.constants import MODIFIER_NAME, NODE_GROUP_NAME
 
-# reset
-bpy.ops.object.select_all(action='SELECT')
-bpy.ops.object.delete(use_global=False)
+def validate_output(obj):
+    bpy.context.view_layer.update()
+    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    try:
+        assert len(mesh.vertices) > len(obj.data.vertices), 'No generated flow in render output'
+        age = mesh.attributes.get('sf_age')
+        assert age is not None and max(v.value for v in age.data) >= 8, 'Trail history missing'
+        return len(mesh.vertices), len(mesh.edges), len(mesh.polygons)
+    finally:
+        evaluated.to_mesh_clear()
 
-bpy.ops.mesh.primitive_uv_sphere_add(segments=64, ring_count=32, radius=1.0)
-obj = bpy.context.active_object
-obj.name = "SF_TestSphere"
 
-tree = build_surface_flow_group(force_rebuild=True)
-assert tree.name == NODE_GROUP_NAME
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--save')
+    parser.add_argument('--package', type=Path, help='Test a staged extension instead of development source')
+    args = parser.parse_args(sys.argv[sys.argv.index('--')+1:] if '--' in sys.argv else [])
+    if args.package:
+        spec = importlib.util.spec_from_file_location('sf_staged', args.package / '__init__.py',
+                                                    submodule_search_locations=[str(args.package)])
+        package = importlib.util.module_from_spec(spec)
+        sys.modules['sf_staged'] = package
+        spec.loader.exec_module(package)
+        from sf_staged.build_nodes import build_flumen_group
+    else:
+        import flumen as package
+        from flumen.build_nodes import build_flumen_group
+    for obj in list(bpy.data.objects):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=48, ring_count=24, radius=1.0)
+    obj = bpy.context.object
+    tree = build_flumen_group(force_rebuild=True)
+    mod = obj.modifiers.new('Flumen', 'NODES')
+    mod.node_group = tree
+    print('SURFACE_FLOW_SMOKE_TEST_OK', *validate_output(obj))
+    obj.modifiers.remove(mod)
+    package.register()
+    try:
+        assert bpy.ops.flumen.create_simulation() == {'FINISHED'}
+        host=bpy.context.object
+        for frame in range(1,6):
+            bpy.context.scene.frame_set(frame)
+            evaluated=host.evaluated_get(bpy.context.evaluated_depsgraph_get())
+            mesh=evaluated.to_mesh()
+            try:
+                assert len(mesh.vertices)>0, 'Animated render is empty'
+                if frame==5:
+                    assert max(v.value for v in mesh.attributes['sf_age'].data)>.1, 'Animated state did not advance'
+            finally:
+                evaluated.to_mesh_clear()
+        print('SURFACE_FLOW_ANIMATED_SMOKE_TEST_OK')
+    finally:
+        package.unregister()
+    if args.save:
+        bpy.ops.wm.save_as_mainfile(filepath=str(Path(args.save).resolve()))
 
-mod = obj.modifiers.new(MODIFIER_NAME, 'NODES')
-mod.node_group = tree
 
-# Force depsgraph evaluation. This catches a large class of invalid-node links.
-depsgraph = bpy.context.evaluated_depsgraph_get()
-eval_obj = obj.evaluated_get(depsgraph)
-mesh = eval_obj.to_mesh()
-assert mesh is not None
-print("SURFACE_FLOW_SMOKE_TEST_OK", len(mesh.vertices), len(mesh.edges), len(mesh.polygons))
-eval_obj.to_mesh_clear()
-
-out = os.path.join(ROOT, "surface_flow_smoke_test.blend")
-bpy.ops.wm.save_as_mainfile(filepath=out)
-print("Saved", out)
+if __name__ == '__main__':
+    main()

@@ -1,5 +1,5 @@
 import math
-from surface_flow.math_core import tangent_gravity, normalized_height
+from flumen.math_core import tangent_gravity, normalized_height
 
 
 def close(a, b, eps=1e-6):

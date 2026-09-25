@@ -6,7 +6,7 @@ Alexey Stomakhin, Andrew Moffat, Gary Boyle. **A Practical Guide to Thin Film an
 
 The paper studies close-up water interaction with characters and discusses surface tension, viscosity, contact-angle adhesion, and moving collision geometry using a FLIP/APIC pipeline.
 
-Surface Flow uses the paper as a *phenomena reference*, not as an implementation specification. The repository's current algorithm is procedural path integration over an existing mesh.
+Flumen uses the paper as a *phenomena reference*, not as an implementation specification. The static workflow integrates paths; M1 integrates attached and free particles on stationary collision geometry. It does not reproduce the paper's thin-film solver.
 
 ## Blender features used by the MVP
 
@@ -16,3 +16,5 @@ Surface Flow uses the paper as a *phenomena reference*, not as an implementation
 - Distribute Points on Faces
 - Points to Curves
 - named attributes
+
+Primary paper: https://www.wetafx.co.nz/assets/Uploads/PDFs/siggraph2019_drips-v2.pdf (local reference: `siggraph2019_drips-v2.pdf`). M1 also uses Simulation Zones, Raycast, and native packed simulation baking.

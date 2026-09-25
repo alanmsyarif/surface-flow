@@ -10,10 +10,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-import surface_flow
+import flumen
 try:
-    surface_flow.unregister()
+    flumen.unregister()
 except Exception:
     pass
-surface_flow.register()
-print("Surface Flow dev addon registered from", ROOT)
+flumen.register()
+print("Flumen dev addon registered from", ROOT)
